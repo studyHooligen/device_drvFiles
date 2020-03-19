@@ -4,9 +4,33 @@
 
 #include "main.h"
 
+/*******移植前请适配该quad spi句柄***********/
 #define FLASH256QSPI hqspi
 
+/********芯片常量定义********/
 #define SectorSize 4096
+
+/********W25Q256芯片指令集********/
+#define FLASH256_ReadStatusReg1 0x05
+#define FLASH256_ReadStatusReg2 0x35
+#define FLASH256_ReadStatusReg3 0x15
+
+#define FLASH256_WriteStatusReg1 0x01
+#define FLASH256_WriteStatusReg2 0x31
+#define FLASH256_WriteStatusReg3 0x11
+
+#define FLASH256_ManufactureDeviceID 0x90
+
+#define FLASH256_EnterQspiMode 0x38
+#define FLASH256_Enable4ByteAddr 0xB7
+#define FLASH256_WritEnable 0x06
+
+#define FLASH256_SetReadParameter 0xC0
+
+#define FLASH256_FastReadData 0x0B
+#define FLASH256_PageProgram 0x02
+#define FLASH256_SectorErase 0x20
+#define FLASH256_ChipErase 0xC7
 
 struct FLASH_W25Q256
 {
@@ -65,10 +89,11 @@ void FLASH256writeSector(uint32_t sectorID,uint8_t * sectorData);
 
 /**
   * @brief 初始化W25Q256芯片
+  * @note  调用该函数前必须已经初始化了QSPI外设
   * @param None
-  * @retval None
+  * @retval 初始化是否成功，HAL_OK或者HAL_ERROR
   */
-inline void FLASH256devInit(void);
+HAL_StatusTypeDef FLASH256devInit(void);
 
 /**
   * @brief 接受FLASH的QSPI传输数据
@@ -113,12 +138,6 @@ void FLASH256sendCMD(uint32_t cmd,uint32_t addr,uint32_t dummyCycles,uint32_t cm
     handlerPtr->AddressSize = addrSize;     //地址长度
     handlerPtr->DataMode = dataMode;        //数据模式
     
-    //待优化代码
-    handlerPtr->SIOOMode = QSPI_SIOO_INST_EVERY_CMD;    //每次都发送指令
-    handlerPtr->AlternateByteMode = QSPI_ALTERNATE_BYTES_NONE;  //无交替字节
-    handlerPtr->DdrMode = QSPI_DDR_MODE_DISABLE;    //不使用DDR模式
-    handlerPtr->DdrHoldHalfCycle = QSPI_DDR_HHC_ANALOG_DELAY;   //无意义
-    
     HAL_QSPI_Command(&FLASH256QSPI,handlerPtr,5000);
 }
 
@@ -132,6 +151,25 @@ inline void FLASH256transmit(uint8_t * dataBuf,uint32_t dataLen)
 {
     FLASH256QSPI.Instance->DLR = dataLen - 1;       //配置数据传输长度
     HAL_QSPI_Transmit(&FLASH256QSPI,dataBuf,5000);  //发送数据
+}
+
+void FLASH256read(uint8_t * readBuf,uint32_t readAddr,uint16_t readNum)
+{
+    
+}
+
+//********************TODO*************************
+HAL_StatusTypeDef FLASH256devInit(void)
+{
+    QSPI_CommandTypeDef * handlerPtr = &(deviceFLASH256.cmdHandler);
+    
+    handlerPtr->SIOOMode = QSPI_SIOO_INST_EVERY_CMD;    //每次都发送指令
+    handlerPtr->AlternateByteMode = QSPI_ALTERNATE_BYTES_NONE;  //无交替字节
+    handlerPtr->DdrMode = QSPI_DDR_MODE_DISABLE;    //不使用DDR模式
+    handlerPtr->DdrHoldHalfCycle = QSPI_DDR_HHC_ANALOG_DELAY;   //无意义
+    
+    //使能FLASH的QSPI模式
+    
 }
 
 #endif
