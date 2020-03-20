@@ -1,3 +1,16 @@
+/* 
+ * FLASH_W25Q256.h - The C head file of the SPI FLASH(W25Q256) driver
+ * NOTE: This file is based on HAL library of stm32 platform
+ *       The default initialization device is in QSPI mode!!!
+ *
+ * Copyright (c) 2020-, FOSH Project
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Change Logs:
+ * Date           Author            Notes           mail
+ * 2020-03-20     StudyHooligen     first version   2373180028@qq.com
+ */
 #ifndef _FLASH_W25Q256_H_
 
 #define _FLASH_W25Q256_H_
@@ -8,7 +21,14 @@
 #define FLASH256QSPI hqspi
 
 /********芯片常量定义********/
-#define SectorSize 4096
+#define BlockNum    512     //块数量
+#define BlockSize   (SectorNum*SectorSize)     //块大小
+#define SectorNum   16      //扇区数量/块
+#define SectorSize  4096    //扇区大小
+#define PageNum     16      //页数量/扇区
+#define PageSize    256     //页大小（单位：字节）
+#define FLASH256MF  0xEF    //芯片制造序列
+#define FLASH256ID  0x18    //芯片ID
 
 /********W25Q256芯片指令集********/
 #define FLASH256_ReadStatusReg1 0x05
@@ -23,7 +43,7 @@
 
 #define FLASH256_EnterQspiMode 0x38
 #define FLASH256_Enable4ByteAddr 0xB7
-#define FLASH256_WritEnable 0x06
+#define FLASH256_WriteEnable 0x06
 
 #define FLASH256_SetReadParameter 0xC0
 
@@ -40,6 +60,14 @@ struct FLASH_W25Q256
     uint8_t SectorCache[SectorSize];    //扇区读写处理缓存
     QSPI_CommandTypeDef cmdHandler;     //命令发送句柄
 } deviceFLASH256;
+
+/**
+  * @brief 初始化W25Q256芯片
+  * @note  调用该函数前必须已经初始化了QSPI外设，FLASH芯片上电后默认SPI传输模式
+  * @param None
+  * @retval 初始化是否成功，HAL_OK或者HAL_ERROR
+  */
+HAL_StatusTypeDef FLASH256devInit(void);
 
 /**
   * @brief 读取FLASH内部存储数据内容
@@ -88,20 +116,12 @@ void FLASH256eraseSector(uint32_t sectorID);
 void FLASH256writeSector(uint32_t sectorID,uint8_t * sectorData);
 
 /**
-  * @brief 初始化W25Q256芯片
-  * @note  调用该函数前必须已经初始化了QSPI外设
-  * @param None
-  * @retval 初始化是否成功，HAL_OK或者HAL_ERROR
-  */
-HAL_StatusTypeDef FLASH256devInit(void);
-
-/**
   * @brief 接受FLASH的QSPI传输数据
   * @param dataBuf: 接收到数据的缓存
   * @param dataLen: 接受数据长度
   * @retval None
   */
-inline void FLASH256receive(uint8_t * dataBuf,uint32_t dataLen);
+void FLASH256receive(uint8_t * dataBuf,uint32_t dataLen);
 
 /**
   * @brief 发送FLASH的QSPI传输数据
@@ -109,21 +129,21 @@ inline void FLASH256receive(uint8_t * dataBuf,uint32_t dataLen);
   * @param dataLen: 发送数据长度
   * @retval None
   */
-inline void FLASH256transmit(uint8_t * dataBuf,uint32_t dataLen);
+void FLASH256transmit(uint8_t * dataBuf,uint32_t dataLen);
 
 /**
-  * @brief 使能W25Q256的QSPI传输功能
+  * @brief 等待W25Q256退出Busy
   * @param None
   * @retval None
   */
-inline void FLASH256enableQSPI(void);
+void FLASH256waitBusy(void);
 
 /**
-  * @brief 使能W25Q256的写入功能
+  * @brief 串口打印W25Q256ID
   * @param None
   * @retval None
   */
-inline void FLASH256enableWrite(void);
+void FLASH256getID(uint8_t * data);
 
 /***************开始定义函数***************/
 void FLASH256sendCMD(uint32_t cmd,uint32_t addr,uint32_t dummyCycles,uint32_t cmdMode,uint32_t addrMode,uint32_t addrSize,uint32_t dataMode)
@@ -138,16 +158,16 @@ void FLASH256sendCMD(uint32_t cmd,uint32_t addr,uint32_t dummyCycles,uint32_t cm
     handlerPtr->AddressSize = addrSize;     //地址长度
     handlerPtr->DataMode = dataMode;        //数据模式
     
-    HAL_QSPI_Command(&FLASH256QSPI,handlerPtr,5000);
+    HAL_QSPI_Command(&FLASH256QSPI,handlerPtr,500);
 }
 
-inline void FLASH256receive(uint8_t * dataBuf,uint32_t dataLen)
+void FLASH256receive(uint8_t * dataBuf,uint32_t dataLen)
 {
     FLASH256QSPI.Instance->DLR = dataLen-1;         //配置数据传输长度
     HAL_QSPI_Receive(&FLASH256QSPI,dataBuf,5000);   //接收数据
 }
 
-inline void FLASH256transmit(uint8_t * dataBuf,uint32_t dataLen)
+void FLASH256transmit(uint8_t * dataBuf,uint32_t dataLen)
 {
     FLASH256QSPI.Instance->DLR = dataLen - 1;       //配置数据传输长度
     HAL_QSPI_Transmit(&FLASH256QSPI,dataBuf,5000);  //发送数据
@@ -155,10 +175,86 @@ inline void FLASH256transmit(uint8_t * dataBuf,uint32_t dataLen)
 
 void FLASH256read(uint8_t * readBuf,uint32_t readAddr,uint16_t readNum)
 {
-    
+    //FLASH256waitBusy();
+    FLASH256sendCMD(FLASH256_FastReadData,readAddr,8,QSPI_INSTRUCTION_4_LINES,QSPI_ADDRESS_4_LINES,QSPI_ADDRESS_32_BITS,QSPI_DATA_4_LINES);
+    FLASH256receive(readBuf,readNum);
 }
 
-//********************TODO*************************
+void FLASH256write(uint8_t * writeBuf,uint32_t writeAddr,uint16_t writeNum)
+{
+    uint16_t sectorPos = writeAddr/SectorSize;    //第一个写入的扇区号
+    uint16_t sectorOffset = writeAddr%SectorSize;  //第一个扇区的偏移量
+    uint16_t sectorRemain = SectorSize - sectorOffset; //第一扇区内剩余空间大小
+    uint16_t writeSectorNum = (writeNum - sectorRemain)/SectorSize;  //写整个扇区的数量
+    uint16_t writeRemainNum = writeNum - writeSectorNum * SectorSize; //剩余尾扇区写入字节量
+    
+    //第一部分，非整扇区后写入
+    FLASH256read(deviceFLASH256.SectorCache,sectorPos*SectorSize,SectorSize);
+    FLASH256eraseSector(sectorPos);
+    while(1)
+    {
+        deviceFLASH256.SectorCache[sectorOffset+sectorRemain] = writeBuf[sectorRemain];
+        sectorRemain--;
+        if(!sectorRemain) break;
+    }
+    writeBuf += sectorRemain+1;
+    FLASH256waitBusy();
+    FLASH256writeSector(sectorPos,deviceFLASH256.SectorCache);
+    
+    
+    //第二部分，整扇区写入
+    while(writeSectorNum--)
+    {
+        sectorPos++;
+        FLASH256eraseSector(sectorPos);
+        FLASH256waitBusy();
+        FLASH256writeSector(sectorPos,writeBuf);
+        writeBuf += SectorSize;
+    }
+    
+    //第三部分，尾阶段非整扇区前写入
+    FLASH256read(deviceFLASH256.SectorCache,sectorPos*SectorSize,SectorSize);
+    FLASH256eraseSector(sectorPos);
+    while(1)
+    {
+        deviceFLASH256.SectorCache[writeRemainNum] = writeBuf[writeRemainNum];
+        writeRemainNum--;
+        if(!writeRemainNum) break;
+    }
+    FLASH256waitBusy();
+    FLASH256writeSector(sectorPos,deviceFLASH256.SectorCache);
+    
+    return;
+}
+
+void FLASH256eraseSector(uint32_t sectorID)
+{
+    //使能芯片的写功能
+    FLASH256sendCMD(FLASH256_WriteEnable,0,0,QSPI_INSTRUCTION_4_LINES,QSPI_ADDRESS_NONE,QSPI_ADDRESS_8_BITS,QSPI_DATA_NONE);
+    
+    FLASH256waitBusy();
+    
+    //发送扇区擦除命令
+    FLASH256sendCMD(FLASH256_SectorErase,sectorID*SectorSize,0,QSPI_INSTRUCTION_4_LINES,QSPI_ADDRESS_4_LINES,QSPI_ADDRESS_32_BITS,QSPI_DATA_NONE);
+}
+
+
+void FLASH256writeSector(uint32_t sectorID,uint8_t * sectorData)
+{
+    for(uint32_t addr = 0;addr < SectorSize;addr +=PageSize)
+    {
+        //等待芯片空闲
+        FLASH256waitBusy();        
+        
+        //使能芯片的写功能
+        FLASH256sendCMD(FLASH256_WriteEnable,0,0,QSPI_INSTRUCTION_4_LINES,QSPI_ADDRESS_NONE,QSPI_ADDRESS_8_BITS,QSPI_DATA_NONE);
+        
+        //输入写入扇区
+        FLASH256sendCMD(FLASH256_PageProgram,sectorID*SectorSize + addr,0,QSPI_INSTRUCTION_4_LINES,QSPI_ADDRESS_4_LINES,QSPI_ADDRESS_32_BITS,QSPI_DATA_4_LINES);
+        FLASH256transmit(sectorData,PageSize);
+    }
+}
+
 HAL_StatusTypeDef FLASH256devInit(void)
 {
     QSPI_CommandTypeDef * handlerPtr = &(deviceFLASH256.cmdHandler);
@@ -168,8 +264,79 @@ HAL_StatusTypeDef FLASH256devInit(void)
     handlerPtr->DdrMode = QSPI_DDR_MODE_DISABLE;    //不使用DDR模式
     handlerPtr->DdrHoldHalfCycle = QSPI_DDR_HHC_ANALOG_DELAY;   //无意义
     
-    //使能FLASH的QSPI模式
+    //读取芯片的状态寄存器
+    FLASH256sendCMD(FLASH256_ReadStatusReg1,0,0,QSPI_INSTRUCTION_1_LINE,QSPI_ADDRESS_NONE,QSPI_ADDRESS_8_BITS,QSPI_DATA_1_LINE);
+    FLASH256receive(deviceFLASH256.statusRegister,1);   //读取状态寄存器1
+    FLASH256sendCMD(FLASH256_ReadStatusReg2,0,0,QSPI_INSTRUCTION_1_LINE,QSPI_ADDRESS_NONE,QSPI_ADDRESS_8_BITS,QSPI_DATA_1_LINE);
+    FLASH256receive((deviceFLASH256.statusRegister)+1,1);   //读取状态寄存器2
+    FLASH256sendCMD(FLASH256_ReadStatusReg3,0,0,QSPI_INSTRUCTION_1_LINE,QSPI_ADDRESS_NONE,QSPI_ADDRESS_8_BITS,QSPI_DATA_1_LINE);
+    FLASH256receive((deviceFLASH256.statusRegister)+2,1);   //读取状态寄存器3
     
+    //开启QSPI模式前需要设置状态寄存器2的QE位为1，否则写入使能QSPI命令无效
+    if((deviceFLASH256.statusRegister[1] & 0x02)==0)
+    {
+        //使能芯片的写功能
+        FLASH256sendCMD(FLASH256_WriteEnable,0,0,QSPI_INSTRUCTION_1_LINE,QSPI_ADDRESS_NONE,QSPI_ADDRESS_8_BITS,QSPI_DATA_NONE);
+        
+        //写QE位为1
+        deviceFLASH256.statusRegister[1] |= 0x02;
+        FLASH256sendCMD(FLASH256_WriteStatusReg2,0,0,QSPI_INSTRUCTION_1_LINE,QSPI_ADDRESS_NONE,QSPI_ADDRESS_8_BITS,QSPI_DATA_1_LINE);
+        FLASH256transmit((deviceFLASH256.statusRegister)+1,1);
+    }
+    
+    HAL_Delay(20);
+    
+    //使能芯片的写功能
+    FLASH256sendCMD(FLASH256_WriteEnable,0,0,QSPI_INSTRUCTION_1_LINE,QSPI_ADDRESS_NONE,QSPI_ADDRESS_8_BITS,QSPI_DATA_NONE);
+    
+    //使能FLASH的QSPI模式
+    FLASH256sendCMD(FLASH256_EnterQspiMode,0,0,QSPI_INSTRUCTION_1_LINE,QSPI_ADDRESS_NONE,QSPI_ADDRESS_8_BITS,QSPI_DATA_NONE);
+    
+    deviceFLASH256.QSPI = 1;    //已经进入QSPI模式
+    
+    //使能芯片的写功能
+    FLASH256sendCMD(FLASH256_WriteEnable,0,0,QSPI_INSTRUCTION_4_LINES,QSPI_ADDRESS_NONE,QSPI_ADDRESS_8_BITS,QSPI_DATA_NONE);
+    
+    //使能FLASH的4字节模式
+    FLASH256sendCMD(FLASH256_Enable4ByteAddr,0,0,QSPI_INSTRUCTION_4_LINES,QSPI_ADDRESS_NONE,QSPI_ADDRESS_8_BITS,QSPI_DATA_NONE);
+    
+    //使能芯片的写功能
+    FLASH256sendCMD(FLASH256_WriteEnable,0,0,QSPI_INSTRUCTION_4_LINES,QSPI_ADDRESS_NONE,QSPI_ADDRESS_8_BITS,QSPI_DATA_NONE);
+    
+    //设置芯片读参数为：104MHz
+    FLASH256sendCMD(FLASH256_SetReadParameter,0,0,QSPI_INSTRUCTION_4_LINES,QSPI_ADDRESS_NONE,QSPI_ADDRESS_8_BITS,QSPI_DATA_4_LINES);
+    uint8_t readParam = 3<<4;
+    FLASH256transmit(&readParam,1);
+    
+    //使能芯片的写功能
+    FLASH256sendCMD(FLASH256_WriteEnable,0,0,QSPI_INSTRUCTION_4_LINES,QSPI_ADDRESS_NONE,QSPI_ADDRESS_8_BITS,QSPI_DATA_NONE);
+    
+    //获取芯片ID
+    FLASH256sendCMD(FLASH256_ManufactureDeviceID,0,0,QSPI_INSTRUCTION_4_LINES,QSPI_ADDRESS_4_LINES,QSPI_ADDRESS_24_BITS,QSPI_DATA_4_LINES);
+    FLASH256receive(deviceFLASH256.ID,2);
+    
+    //校验QSPI模式读取出来的ID是否准确
+    if((deviceFLASH256.ID[0] == FLASH256MF) && (deviceFLASH256.ID[1] == FLASH256ID))
+        return HAL_OK;
+    else return HAL_ERROR;
 }
+
+void FLASH256waitBusy(void)
+{
+    while(1)    //等待轮询芯片退出busy
+    {
+        FLASH256sendCMD(FLASH256_ReadStatusReg1,0,0,QSPI_INSTRUCTION_4_LINES,QSPI_ADDRESS_NONE,QSPI_ADDRESS_8_BITS,QSPI_DATA_4_LINES);
+        FLASH256receive(deviceFLASH256.statusRegister,1);   //读取状态寄存器1
+        if((deviceFLASH256.statusRegister[0] & 0x01)!= 0x01)  break;
+    }
+}
+
+
+void FLASH256getID(uint8_t * data)
+{
+    data[0] = deviceFLASH256.ID[0];
+    data[1] = deviceFLASH256.ID[1];
+    return;
+}    
 
 #endif
