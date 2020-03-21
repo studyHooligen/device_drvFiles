@@ -80,9 +80,9 @@ void FLASH256read(uint8_t * readBuf,uint32_t readAddr,uint16_t readNum);
 
 /**
   * @brief 写入FLASH内部存储数据内容
-  * @param writeBuf: 读出数据存储位置指针
+  * @param writeBuf:  读出数据存储位置指针
   * @param writeAddr: 数据在Flash内的地址
-  * @param writeNum: 读出数据个数
+  * @param writeNum:  读出数据个数
   * @retval None
   */
 void FLASH256write(uint8_t * writeBuf,uint32_t writeAddr,uint16_t writeNum);
@@ -175,7 +175,7 @@ void FLASH256transmit(uint8_t * dataBuf,uint32_t dataLen)
 
 void FLASH256read(uint8_t * readBuf,uint32_t readAddr,uint16_t readNum)
 {
-    //FLASH256waitBusy();
+    FLASH256waitBusy();
     FLASH256sendCMD(FLASH256_FastReadData,readAddr,8,QSPI_INSTRUCTION_4_LINES,QSPI_ADDRESS_4_LINES,QSPI_ADDRESS_32_BITS,QSPI_DATA_4_LINES);
     FLASH256receive(readBuf,readNum);
 }
@@ -186,21 +186,26 @@ void FLASH256write(uint8_t * writeBuf,uint32_t writeAddr,uint16_t writeNum)
     uint16_t sectorOffset = writeAddr%SectorSize;  //第一个扇区的偏移量
     uint16_t sectorRemain = SectorSize - sectorOffset; //第一扇区内剩余空间大小
     uint16_t writeSectorNum = (writeNum - sectorRemain)/SectorSize;  //写整个扇区的数量
-    uint16_t writeRemainNum = writeNum - writeSectorNum * SectorSize; //剩余尾扇区写入字节量
+    uint16_t writeRemainNum = writeNum - sectorRemain - writeSectorNum * SectorSize; //剩余尾扇区写入字节量
     
     //第一部分，非整扇区后写入
-    FLASH256read(deviceFLASH256.SectorCache,sectorPos*SectorSize,SectorSize);
-    FLASH256eraseSector(sectorPos);
-    while(1)
+    if(sectorOffset)
     {
-        deviceFLASH256.SectorCache[sectorOffset+sectorRemain] = writeBuf[sectorRemain];
-        sectorRemain--;
-        if(!sectorRemain) break;
+        FLASH256read(deviceFLASH256.SectorCache,sectorPos*SectorSize,SectorSize);
+        FLASH256eraseSector(sectorPos);
+        while(sectorRemain--)
+        {
+            deviceFLASH256.SectorCache[sectorOffset+sectorRemain] = writeBuf[sectorRemain];
+        }
+        writeBuf += (SectorSize - sectorOffset);
+        //HAL_UART_Transmit(&huart1,deviceFLASH256.SectorCache,SectorSize,0XFFF);
+        FLASH256waitBusy();
+        FLASH256writeSector(sectorPos,deviceFLASH256.SectorCache);
     }
-    writeBuf += sectorRemain+1;
-    FLASH256waitBusy();
-    FLASH256writeSector(sectorPos,deviceFLASH256.SectorCache);
-    
+    else{
+        writeSectorNum ++;
+        sectorPos --;
+    }
     
     //第二部分，整扇区写入
     while(writeSectorNum--)
@@ -211,15 +216,15 @@ void FLASH256write(uint8_t * writeBuf,uint32_t writeAddr,uint16_t writeNum)
         FLASH256writeSector(sectorPos,writeBuf);
         writeBuf += SectorSize;
     }
+    sectorPos++;
     
     //第三部分，尾阶段非整扇区前写入
+    if(!writeRemainNum) return; //没有尾扇区写
     FLASH256read(deviceFLASH256.SectorCache,sectorPos*SectorSize,SectorSize);
     FLASH256eraseSector(sectorPos);
-    while(1)
+    while(writeRemainNum--)
     {
         deviceFLASH256.SectorCache[writeRemainNum] = writeBuf[writeRemainNum];
-        writeRemainNum--;
-        if(!writeRemainNum) break;
     }
     FLASH256waitBusy();
     FLASH256writeSector(sectorPos,deviceFLASH256.SectorCache);
@@ -249,9 +254,9 @@ void FLASH256writeSector(uint32_t sectorID,uint8_t * sectorData)
         //使能芯片的写功能
         FLASH256sendCMD(FLASH256_WriteEnable,0,0,QSPI_INSTRUCTION_4_LINES,QSPI_ADDRESS_NONE,QSPI_ADDRESS_8_BITS,QSPI_DATA_NONE);
         
-        //输入写入扇区
+        //数据写入页
         FLASH256sendCMD(FLASH256_PageProgram,sectorID*SectorSize + addr,0,QSPI_INSTRUCTION_4_LINES,QSPI_ADDRESS_4_LINES,QSPI_ADDRESS_32_BITS,QSPI_DATA_4_LINES);
-        FLASH256transmit(sectorData,PageSize);
+        FLASH256transmit(sectorData+addr,PageSize);
     }
 }
 

@@ -28,7 +28,6 @@ HAL_StatusTypeDef EEPROM24C02memoryTest(void)
         return HAL_OK;
     else
         return HAL_ERROR;
-    return HAL_OK;
 }
 
 /* @brief 测试EEPROM页读写性能
