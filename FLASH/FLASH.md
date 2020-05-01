@@ -20,12 +20,17 @@
   - IOx：数据/地址传输线
 
 - 存储单元
+  - block：最小擦除单位
   - page
     - 数据存储区（data area）
     - 备用区域（spare area）：一般存放ECC校验值
-  - block：最小擦除单位
   - plane
   - device
+
+- 特点
+  - 随机读写速度较快（us级别）
+  - Page丛发读写操作速度快（ns级别）
+  - Block擦除速度较慢（ms级别）
 
 - 地址
   - 块地址
@@ -42,3 +47,15 @@
 
 - FTL闪存转换层
   - 负责坏块管理和磨损均衡
+
+## NOR FLASH
+
+- 存储单元
+  - Bank
+  - Block
+  - Page
+  - bit
+
+- 特点
+  - 读写速度快（ns级别）
+  - Block擦除速度慢（ms级别）
